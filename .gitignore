@@ -1,0 +1,6 @@
+weights/
+tmp/
+runs/
+results/
+.venv
+__pycache__
