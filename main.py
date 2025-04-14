@@ -7,6 +7,7 @@ from models import *
 from PyQt5 import uic
 from PyQt5.QtWidgets import QApplication, QMainWindow, QButtonGroup, QFileDialog
 from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QPixmap, QImage, QIcon
+from widgets import MainWindow, TableWidget
 
 class DropWidget(QMainWindow):
     def __init__(self):
@@ -148,6 +149,7 @@ class DropWidget(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("Vega_radio.ico"))
-    widget = DropWidget()
+    # widget = DropWidget()
+    widget = MainWindow()
     widget.show()
     sys.exit(app.exec_())
