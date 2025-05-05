@@ -2,12 +2,16 @@ import os
 import shutil
 
 from PyQt5 import uic
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap, QBrush
+from PyQt5.QtCore import Qt, pyqtSignal, QRectF
+from PyQt5.QtGui import QPixmap, QBrush, QImage
 from PyQt5.QtWidgets import QMainWindow, QFileDialog, QTableWidget, QTableWidgetItem, \
-    QGraphicsView, QGraphicsScene
+    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
+from PyQt5.QtCore import Qt, QPointF
+from PyQt5.QtGui import QPixmap, QWheelEvent, QMouseEvent
 
-from models import *
+# from models import *
+from client import *
+from tiled_processor import *
 
 
 class TableWidget(QTableWidget):
@@ -18,12 +22,18 @@ class TableWidget(QTableWidget):
         self.cellDoubleClicked.connect(self.on_cell_double_clicked)
 
     def fill_table(self, file_names):
-        self.setRowCount(len(file_names))  # Устанавливаем количество строк
-        for i, file_name in enumerate(file_names):
-            self.setItem(i, 0, QTableWidgetItem(file_name))
-            self.setItem(i, 1, QTableWidgetItem("Не определено"))
-            self.item(i, 0).setFlags(Qt.ItemIsEnabled)
-            self.item(i, 1).setFlags(Qt.ItemIsEnabled)
+        # self.setRowCount(len(file_names))  # Устанавливаем количество строк
+        for file_name in file_names:
+            self.add_row(file_name)
+            
+    def add_row(self, file_name, value="Не определено"):
+        row = self.rowCount()
+        self.insertRow(row)
+        print(file_name)
+        self.setItem(row, 0, QTableWidgetItem(file_name))
+        self.setItem(row, 1, QTableWidgetItem(str(value)))
+        self.item(row, 0).setFlags(Qt.ItemIsEnabled)
+        self.item(row, 1).setFlags(Qt.ItemIsEnabled)
 
     def update_value(self, file_name, value):
         row_count = self.rowCount()
@@ -33,7 +43,7 @@ class TableWidget(QTableWidget):
                 self.setItem(i, 1, QTableWidgetItem(str(value)))
                 return
 
-    def on_cell_double_clicked(self, row, _):
+    def on_cell_double_clicked(self, row, col):
         current_filename = self.item(row, 0).text()
         self.image_changes.emit(current_filename)
 
@@ -41,24 +51,94 @@ class TableWidget(QTableWidget):
 class MyGraphicsView(QGraphicsView):
     def __init__(self, parent=None):
         super().__init__(parent)
-
+        
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
+        
+        self.pixmap_item = QGraphicsPixmapItem()
+        self.scene.addItem(self.pixmap_item)
+        
+        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        self._pan_start = QPointF()
+        self._panning = False
+        
+        # Настройки масштабирования
+        self.zoom_factor = 1.25
+        self.min_zoom = 0.1
+        self.max_zoom = 10.0
+        self.current_scale = 1.0
 
-    def set_img(self, img_path):
-        pixmap = QPixmap(img_path)
-        if not pixmap.isNull():
-            self.scene.setBackgroundBrush(QBrush(pixmap))
+    def set_image(self, image_path):
+        """Установка изображения из файла"""
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull():
+            print("Ошибка загрузки изображения")
+            return
+            
+        self.pixmap_item.setPixmap(pixmap)
+        # Исправлено: преобразование QRect в QRectF
+        self.scene.setSceneRect(QRectF(pixmap.rect()))  
+        self.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
+        self.current_scale = 1.0
+
+    def wheelEvent(self, event: QWheelEvent):
+        """Масштабирование при прокрутке колесика мыши"""
+        zoom_in = event.angleDelta().y() > 0
+        
+        if zoom_in and self.current_scale < self.max_zoom:
+            self.scale(self.zoom_factor, self.zoom_factor)
+            self.current_scale *= self.zoom_factor
+        elif not zoom_in and self.current_scale > self.min_zoom:
+            self.scale(1 / self.zoom_factor, 1 / self.zoom_factor)
+            self.current_scale /= self.zoom_factor
+
+    def mousePressEvent(self, event: QMouseEvent):
+        """Начало перемещения при зажатой правой кнопке мыши"""
+        if event.button() == Qt.RightButton:
+            self._pan_start = event.pos()
+            self._panning = True
+            self.setCursor(Qt.ClosedHandCursor)
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Перемещение изображения при зажатой правой кнопке"""
+        if self._panning:
+            delta = event.pos() - self._pan_start
+            self._pan_start = event.pos()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Окончание перемещения при отпускании правой кнопки"""
+        if event.button() == Qt.RightButton:
+            self._panning = False
+            self.setCursor(Qt.ArrowCursor)
+        else:
+            super().mouseReleaseEvent(event)
 
 
 class MainWindow(QMainWindow):
     models = {
-        "nano960 9 classes": Nano960_9(),
-        "nano960 10 classes": Nano960_10(),
-        "medium960 10 classes": Medium960_10(),
-        "nano1280 9 classes": Nano1280_9(),
-        "medium960 9 classes": Medium960_9(),
-        "ships": Medium_ships()
+        "nano960 9 classes": TiledYOLOProcessor(model_weights='weights/nano960-9.pt',
+                                                tile_size=4000,
+                                                imgsz=960,
+                                                overlap=100),
+        # "nano960 10 classes": Nano960_10(),
+        # "medium960 10 classes": Medium960_10(),
+        # "nano1280 9 classes": Nano1280_9(),
+        # "medium960 9 classes": Medium960_9(),
+        "ships": TiledYOLOProcessor(model_weights='weights/medium_ships.pt',
+                                                tile_size=800,
+                                                imgsz=800,
+                                                overlap=100)
     }
     conf: float
     file_path: str
@@ -74,28 +154,77 @@ class MainWindow(QMainWindow):
         self.conf = self.horizontalSlider.value() / 100
 
         self.setAcceptDrops(True)
+        
+        self.client = RLIClient()
 
-        # self.detect_btn_2.clicked.connect(self.detect_clicked)
+        self.detect_btn_2.clicked.connect(self.detect_clicked)
         self.open_btn_2.clicked.connect(self.select_directory)
         self.save_btn_2.clicked.connect(self.saveFileNameDialog)
+        self.start_btn.clicked.connect(self.start_client)
         self.horizontalSlider.valueChanged.connect(self.update_conf)
         self.buttonGroup.buttonClicked.connect(self.update_model)
         self.buttonGroup_2.buttonClicked.connect(self.swap_mode)
-
+        
+        self.mode_0_rbtn.toggled.connect(lambda: self.on_radio_toggled(0))
+        self.mode_1_rbtn.toggled.connect(lambda: self.on_radio_toggled(1))
+        self.mode_2_rbtn.toggled.connect(lambda: self.on_radio_toggled(2))
+        self.mode_4_rbtn.toggled.connect(lambda: self.on_radio_toggled(4))
+        
         self.tableWidget.image_changes.connect(self.show_image)
+        
+       
+    def on_radio_toggled(self, mode):
+        if mode == 0:
+            self.client.set_mode(ModeRLI.CHAR)
+        elif mode == 1:
+            self.client.set_mode(ModeRLI.UCHAR)
+        elif mode == 2:
+            self.client.set_mode(ModeRLI.USHORT)
+        elif mode == 4:
+            self.client.set_mode(ModeRLI.FLOAT)
+        
+    def set_radiobutton_enabled(self, is_enabled):
+        self.mode_0_rbtn.setEnabled(is_enabled)
+        self.mode_1_rbtn.setEnabled(is_enabled)
+        self.mode_2_rbtn.setEnabled(is_enabled)
+        self.mode_4_rbtn.setEnabled(is_enabled)
+            
+        
+    def start_client(self):
+        try:
+            self.client.set_connect(self.host_label.text(), int(self.port_label.text()))
+            if not self.client.connect():
+                return
+            if not self.client.send_mode(int(self.size_x_label.text()), int(self.size_y_label.text())):
+                return
+            self.set_radiobutton_enabled(False)
+            result = self.client.receive_data()
+            if result:
+                params, raw_file = result
+                print(f"\nData received successfully and saved to {raw_file}")
+                print(f"Image parameters: {params}")
+            
+                tiff_file = Path(raw_file).with_suffix('.tiff')
+                file_name = self.client.raw_to_tiff(raw_file, str(tiff_file), params.size_x, params.mode_rli)
+                if file_name:
+                    print(f"TIFF image saved to {file_name}")
+                    _, detections = self.model.process_image(f'client_image/{file_name}')  
+                    self.detected_2.setEnabled(True)
+                    self.directory = os.getcwd() + '/client_image/' 
+                    self.image_files = self.get_images_in_directory(self.directory)
+                    self.tableWidget.add_row(file_name, detections)
+                else:
+                    print("Failed to convert RAW to TIFF")            
+        finally:
+            self.set_radiobutton_enabled(True)
+            self.client.disconnect()
+        
 
-    # def detect_clicked(self):
-    #     self.detected.setEnabled(True)
-    #     for image_path in self.image_files:
-    #         results = self.model.predict(image_path, self.conf)
-    #         for r in results:
-    #             img_bgr = r.plot(font_size=40, line_width=8)
-    #             h, w, _ = img_bgr.shape
-    #             self.current_pixmap = QPixmap(QImage(img_bgr.data, w, h, 3 * w, QImage.Format_RGB888))
-    #             self.image_view.update_image(self.current_pixmap)
-    #             self.file_table.update_value(os.path.basename(image_path), len(r.boxes))
-    #             self.current_pixmap.save(f'tmp/detected_{os.path.basename(image_path)}')
-
+    def detect_clicked(self):
+        self.detected_2.setEnabled(True)
+        for image_path in self.image_files:
+            _, detections = self.model.process_image(image_path, self.conf)
+            self.tableWidget.update_value(os.path.basename(image_path), detections)
 
     def update_conf(self, value):
         self.conf = value / 100
@@ -106,18 +235,6 @@ class MainWindow(QMainWindow):
 
     def swap_mode(self, object):
         self.image_mode_detected = (object.text() == 'detected')
-
-
-    # def dragEnterEvent(self, event: QDragEnterEvent):
-    #     if event.mimeData().hasUrls():
-    #         event.accept()
-    #     else:
-    #         event.ignore()
-    #
-    # def dropEvent(self, event: QDropEvent):
-    #     self.file_path = event.mimeData().urls()[0].toLocalFile()
-    #     self.current_pixmap = QPixmap(self.file_path)
-    #     self.image_view.update_image(self.current_pixmap)
 
 
     def select_directory(self):
@@ -144,11 +261,11 @@ class MainWindow(QMainWindow):
 
     def show_image(self, msg):
         if self.image_mode_detected:
-            self.graphicsView.set_img(f'tmp/detected_{msg}')
+            self.graphicsView.set_image(f'tmp/detected_{msg}')
         else:
             for name in self.image_files:
                 if name.endswith(msg):
-                    self.graphicsView.set_img(name)
+                    self.graphicsView.set_image(name)
                     return
 
     def closeEvent(self, a0):
