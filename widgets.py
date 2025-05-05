@@ -152,6 +152,9 @@ class MainWindow(QMainWindow):
         uic.loadUi('untitled.ui', self)
         self.model = self.models.get("vvkr")
         self.conf = self.horizontalSlider.value() / 100
+        
+        self.splitter.setStretchFactor(0, 1)  
+        self.splitter.setStretchFactor(1, 0)
 
         self.setAcceptDrops(True)
         
