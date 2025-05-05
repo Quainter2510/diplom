@@ -3,13 +3,12 @@ import shutil
 
 from PyQt5 import uic
 from PyQt5.QtCore import Qt, pyqtSignal, QRectF
-from PyQt5.QtGui import QPixmap, QBrush, QImage
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QMainWindow, QFileDialog, QTableWidget, QTableWidgetItem, \
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPixmap, QWheelEvent, QMouseEvent
 
-# from models import *
 from client import *
 from tiled_processor import *
 
@@ -20,9 +19,9 @@ class TableWidget(QTableWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.cellDoubleClicked.connect(self.on_cell_double_clicked)
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
 
     def fill_table(self, file_names):
-        # self.setRowCount(len(file_names))  # Устанавливаем количество строк
         for file_name in file_names:
             self.add_row(file_name)
             
@@ -127,18 +126,18 @@ class MyGraphicsView(QGraphicsView):
 
 class MainWindow(QMainWindow):
     models = {
-        "nano960 9 classes": TiledYOLOProcessor(model_weights='weights/nano960-9.pt',
+        "vvkr": TiledYOLOProcessor(model_weights='weights/nano960-9.pt',
                                                 tile_size=4000,
                                                 imgsz=960,
                                                 overlap=100),
-        # "nano960 10 classes": Nano960_10(),
-        # "medium960 10 classes": Medium960_10(),
-        # "nano1280 9 classes": Nano1280_9(),
-        # "medium960 9 classes": Medium960_9(),
         "ships": TiledYOLOProcessor(model_weights='weights/medium_ships.pt',
                                                 tile_size=800,
                                                 imgsz=800,
-                                                overlap=100)
+                                                overlap=100),
+        "bkr": TiledYOLOProcessor(model_weights='weights/medium_ships.pt',
+                                        tile_size=256,
+                                        imgsz=256,
+                                        overlap=50)
     }
     conf: float
     file_path: str
@@ -150,7 +149,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         uic.loadUi('untitled.ui', self)
-        self.model = self.models.get("nano960 9 classes")
+        self.model = self.models.get("vvkr")
         self.conf = self.horizontalSlider.value() / 100
 
         self.setAcceptDrops(True)
@@ -163,7 +162,7 @@ class MainWindow(QMainWindow):
         self.start_btn.clicked.connect(self.start_client)
         self.horizontalSlider.valueChanged.connect(self.update_conf)
         self.buttonGroup.buttonClicked.connect(self.update_model)
-        self.buttonGroup_2.buttonClicked.connect(self.swap_mode)
+        self.detected_chbox.clicked.connect(self.on_checkbox_clicked)
         
         self.mode_0_rbtn.toggled.connect(lambda: self.on_radio_toggled(0))
         self.mode_1_rbtn.toggled.connect(lambda: self.on_radio_toggled(1))
@@ -172,6 +171,10 @@ class MainWindow(QMainWindow):
         
         self.tableWidget.image_changes.connect(self.show_image)
         
+        
+    def on_checkbox_clicked(self):
+        self.image_mode_detected = not self.image_mode_detected
+        self.detected_chbox.setChecked(self.image_mode_detected)
        
     def on_radio_toggled(self, mode):
         if mode == 0:
@@ -221,7 +224,7 @@ class MainWindow(QMainWindow):
         
 
     def detect_clicked(self):
-        self.detected_2.setEnabled(True)
+        self.detected_chbox.setEnabled(True)
         for image_path in self.image_files:
             _, detections = self.model.process_image(image_path, self.conf)
             self.tableWidget.update_value(os.path.basename(image_path), detections)
@@ -233,17 +236,13 @@ class MainWindow(QMainWindow):
     def update_model(self, object):
         return self.models.get(object.text(), None)
 
-    def swap_mode(self, object):
-        self.image_mode_detected = (object.text() == 'detected')
-
 
     def select_directory(self):
         self.directory = QFileDialog.getExistingDirectory(self, "Выберите директорию", "")
         if self.directory:
             self.image_files = self.get_images_in_directory(self.directory)
             self.tableWidget.fill_table([os.path.basename(image_name) for image_name in self.image_files])
-            self.detected_2.setEnabled(False)
-            self.no_detected_2.setChecked(True)
+            self.detected_chbox.setEnabled(False)
 
     def get_images_in_directory(self, directory):
         image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff"}
