@@ -1,9 +1,7 @@
 import socket
 import struct
-import time
 from enum import Enum
 from dataclasses import dataclass
-from typing import Tuple, Optional
 from pathlib import Path
 from PIL import Image
 import numpy as np
