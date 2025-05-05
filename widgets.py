@@ -2,15 +2,16 @@ import os
 import shutil
 
 from PyQt5 import uic
-from PyQt5.QtCore import Qt, pyqtSignal, QRectF
+from PyQt5.QtCore import Qt, pyqtSignal, QRectF, QTimer
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QMainWindow, QFileDialog, QTableWidget, QTableWidgetItem, \
-    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
+    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QProgressBar, QMessageBox
 from PyQt5.QtCore import Qt, QPointF
 from PyQt5.QtGui import QPixmap, QWheelEvent, QMouseEvent
 
 from client import *
 from tiled_processor import *
+from image_processing_worker import ImageProcessingWorker
 
 
 class TableWidget(QTableWidget):
@@ -172,6 +173,18 @@ class MainWindow(QMainWindow):
         self.tableWidget.image_changes.connect(self.show_image)
         
         
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximumWidth(200)
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setVisible(False)
+        
+        self.statusBar().addPermanentWidget(self.progress_bar)
+        
+
+        self.current_worker = None
+        
+        
     def on_checkbox_clicked(self):
         self.image_mode_detected = not self.image_mode_detected
         self.detected_chbox.setChecked(self.image_mode_detected)
@@ -195,39 +208,126 @@ class MainWindow(QMainWindow):
         
     def start_client(self):
         try:
+            self.set_ui_enabled(False)
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setValue(0)
+            self.statusBar().showMessage("Подключение к серверу...")
+            
+            # Запускаем в отдельном потоке
+            QTimer.singleShot(0, self._run_client_connection)
+
+        except Exception as e:
+            self.show_error(f"Ошибка: {str(e)}")
+            self.set_ui_enabled(True)
+            self.progress_bar.setVisible(False)
+
+    def _run_client_connection(self):
+        try:
             self.client.set_connect(self.host_label.text(), int(self.port_label.text()))
             if not self.client.connect():
+                self.show_error("Не удалось подключиться к серверу")
                 return
-            if not self.client.send_mode(int(self.size_x_label.text()), int(self.size_y_label.text())):
-                return
-            self.set_radiobutton_enabled(False)
-            result = self.client.receive_data()
-            if result:
-                params, raw_file = result
-                print(f"\nData received successfully and saved to {raw_file}")
-                print(f"Image parameters: {params}")
+                
+            self.progress_bar.setValue(25)
+            self.statusBar().showMessage("Отправка параметров...")
             
-                tiff_file = Path(raw_file).with_suffix('.tiff')
-                file_name = self.client.raw_to_tiff(raw_file, str(tiff_file), params.size_x, params.mode_rli)
-                if file_name:
-                    print(f"TIFF image saved to {file_name}")
-                    _, detections = self.model.process_image(f'client_image/{file_name}')  
-                    self.detected_2.setEnabled(True)
-                    self.directory = os.getcwd() + '/client_image/' 
-                    self.image_files = self.get_images_in_directory(self.directory)
-                    self.tableWidget.add_row(file_name, detections)
-                else:
-                    print("Failed to convert RAW to TIFF")            
+            if not self.client.send_mode(int(self.size_x_label.text()), int(self.size_y_label.text())):
+                self.show_error("Ошибка отправки параметров")
+                return
+                
+            self.progress_bar.setValue(50)
+            self.statusBar().showMessage("Получение данных...")
+            
+            result = self.client.receive_data()
+            if not result:
+                self.show_error("Ошибка получения данных")
+                return
+                
+            params, raw_file = result
+            self.progress_bar.setValue(75)
+            self.statusBar().showMessage("Конвертация в TIFF...")
+            
+            tiff_file = Path(raw_file).with_suffix('.tiff')
+            file_name = self.client.raw_to_tiff(raw_file, str(tiff_file), params.size_x, params.mode_rli)
+            if not file_name:
+                self.show_error("Ошибка конвертации")
+                return
+                
+            self.progress_bar.setValue(100)
+            self.statusBar().showMessage("Обработка изображения...")
+            
+            worker = ImageProcessingWorker(
+                self.model,
+                [f'client_image/{file_name}'],
+                self.conf
+            )
+            worker.file_processed.connect(lambda f, d: self.tableWidget.add_row(f, d))
+            worker.finished.connect(self.on_client_processing_finished)
+            worker.start()
+            
+        except Exception as e:
+            self.show_error(f"Ошибка: {str(e)}")
         finally:
             self.set_radiobutton_enabled(True)
             self.client.disconnect()
-        
+       
+    def on_client_processing_finished(self):
+        self.detected_2.setEnabled(True)
+        self.directory = os.getcwd() + '/client_image/'
+        self.image_files = self.get_images_in_directory(self.directory)
+        self.set_ui_enabled(True)
+        self.progress_bar.setVisible(False)
+        self.statusBar().showMessage("Готово", 3000)
 
     def detect_clicked(self):
+        if not hasattr(self, 'image_files') or not self.image_files:
+            QMessageBox.warning(self, "Ошибка", "Сначала выберите директорию с изображениями")
+            return
+            
         self.detected_chbox.setEnabled(True)
-        for image_path in self.image_files:
-            _, detections = self.model.process_image(image_path, self.conf)
-            self.tableWidget.update_value(os.path.basename(image_path), detections)
+        
+        self.set_ui_enabled(False)
+        
+        self.current_worker = ImageProcessingWorker(
+            self.model, 
+            self.image_files, 
+            self.conf
+        )
+        
+        self.current_worker.progress_updated.connect(self.update_progress)
+        self.current_worker.file_processed.connect(self.tableWidget.update_value)
+        self.current_worker.finished.connect(self.on_processing_finished)
+        self.current_worker.error_occurred.connect(self.show_error)
+        
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        
+        self.current_worker.start()
+
+    def update_progress(self, progress, filename):
+        self.progress_bar.setValue(progress)
+        self.statusBar().showMessage(f"Обработка: {filename}" if filename else "Готово")
+
+    def on_processing_finished(self):
+        self.set_ui_enabled(True)
+        self.progress_bar.setVisible(False)
+        self.current_worker = None
+        self.statusBar().showMessage("Обработка завершена", 3000)
+
+    def show_error(self, message):
+        QMessageBox.warning(self, "Ошибка", message)
+        self.on_processing_finished()
+
+    def set_ui_enabled(self, enabled):
+        """Блокирует/разблокирует элементы UI во время обработки"""
+        self.detect_btn_2.setEnabled(enabled)
+        self.open_btn_2.setEnabled(enabled)
+        self.save_btn_2.setEnabled(enabled)
+        self.start_btn.setEnabled(enabled)
+        self.horizontalSlider.setEnabled(enabled)
+        for btn in self.buttonGroup.buttons():
+            btn.setEnabled(enabled)
+        self.detected_chbox.setEnabled(enabled)
 
     def update_conf(self, value):
         self.conf = value / 100
