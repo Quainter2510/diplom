@@ -234,46 +234,6 @@ QSlider::handle:horizontal:hover {
             </widget>
            </item>
            <item>
-            <widget class="QGroupBox" name="groupBox_6">
-             <property name="title">
-              <string>режим работы</string>
-             </property>
-             <layout class="QVBoxLayout" name="verticalLayout_8">
-              <item>
-               <widget class="QRadioButton" name="mode_0_rbtn">
-                <property name="text">
-                 <string>Mode 0</string>
-                </property>
-                <property name="checked">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QRadioButton" name="mode_1_rbtn">
-                <property name="text">
-                 <string>Mode 1</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QRadioButton" name="mode_2_rbtn">
-                <property name="text">
-                 <string>Mode 2</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QRadioButton" name="mode_4_rbtn">
-                <property name="text">
-                 <string>Mode 4</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item>
             <widget class="QGroupBox" name="groupBox">
              <property name="title">
               <string>Модель</string>
@@ -317,6 +277,9 @@ QSlider::handle:horizontal:hover {
                 <property name="text">
                  <string>bkr</string>
                 </property>
+                <attribute name="buttonGroup">
+                 <string notr="true">buttonGroup</string>
+                </attribute>
                </widget>
               </item>
              </layout>

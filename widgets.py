@@ -168,11 +168,6 @@ class MainWindow(QMainWindow):
         self.buttonGroup.buttonClicked.connect(self.update_model)
         self.detected_chbox.clicked.connect(self.on_checkbox_clicked)
         
-        self.mode_0_rbtn.toggled.connect(lambda: self.on_radio_toggled(0))
-        self.mode_1_rbtn.toggled.connect(lambda: self.on_radio_toggled(1))
-        self.mode_2_rbtn.toggled.connect(lambda: self.on_radio_toggled(2))
-        self.mode_4_rbtn.toggled.connect(lambda: self.on_radio_toggled(4))
-        
         self.tableWidget.image_changes.connect(self.show_image)
         
         
@@ -191,22 +186,6 @@ class MainWindow(QMainWindow):
     def on_checkbox_clicked(self):
         self.image_mode_detected = not self.image_mode_detected
         self.detected_chbox.setChecked(self.image_mode_detected)
-       
-    def on_radio_toggled(self, mode):
-        if mode == 0:
-            self.client.set_mode(ModeRLI.CHAR)
-        elif mode == 1:
-            self.client.set_mode(ModeRLI.UCHAR)
-        elif mode == 2:
-            self.client.set_mode(ModeRLI.USHORT)
-        elif mode == 4:
-            self.client.set_mode(ModeRLI.FLOAT)
-        
-    def set_radiobutton_enabled(self, is_enabled):
-        self.mode_0_rbtn.setEnabled(is_enabled)
-        self.mode_1_rbtn.setEnabled(is_enabled)
-        self.mode_2_rbtn.setEnabled(is_enabled)
-        self.mode_4_rbtn.setEnabled(is_enabled)
             
         
     def start_client(self):
@@ -259,23 +238,22 @@ class MainWindow(QMainWindow):
             self.progress_bar.setValue(100)
             self.statusBar().showMessage("Обработка изображения...")
             
-            worker = ImageProcessingWorker(
+            self.worker = ImageProcessingWorker(
                 self.model,
                 [f'client_image/{file_name}'],
                 self.conf
             )
-            worker.file_processed.connect(lambda f, d: self.tableWidget.add_row(f, d))
-            worker.finished.connect(self.on_client_processing_finished)
-            worker.start()
+            self.worker.file_processed.connect(lambda f, d: self.tableWidget.add_row(f, d))
+            self.worker.finished.connect(self.on_client_processing_finished)
+            self.worker.start()
             
         except Exception as e:
             self.show_error(f"Ошибка: {str(e)}")
         finally:
-            self.set_radiobutton_enabled(True)
             self.client.disconnect()
        
     def on_client_processing_finished(self):
-        self.detected_2.setEnabled(True)
+        self.detect_btn_2.setEnabled(True)
         self.directory = os.getcwd() + '/client_image/'
         self.image_files = self.get_images_in_directory(self.directory)
         self.set_ui_enabled(True)
