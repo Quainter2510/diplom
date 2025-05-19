@@ -2,5 +2,6 @@ weights/
 tmp/
 runs/
 results/
+client_image/
 .venv
 __pycache__

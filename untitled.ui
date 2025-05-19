@@ -247,7 +247,7 @@ QSlider::handle:horizontal:hover {
                  </font>
                 </property>
                 <property name="text">
-                 <string>vvkr</string>
+                 <string>наземные объекты</string>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -265,7 +265,7 @@ QSlider::handle:horizontal:hover {
                  </font>
                 </property>
                 <property name="text">
-                 <string>ships</string>
+                 <string>большие надводные объекты</string>
                 </property>
                 <attribute name="buttonGroup">
                  <string notr="true">buttonGroup</string>
@@ -275,7 +275,7 @@ QSlider::handle:horizontal:hover {
               <item>
                <widget class="QRadioButton" name="bkr_rbtn">
                 <property name="text">
-                 <string>bkr</string>
+                 <string>малые надводные объекты</string>
                 </property>
                 <attribute name="buttonGroup">
                  <string notr="true">buttonGroup</string>
@@ -342,7 +342,7 @@ QPushButton:pressed {
              <item>
               <widget class="QPushButton" name="start_btn">
                <property name="text">
-                <string>Start</string>
+                <string>Load</string>
                </property>
               </widget>
              </item>
@@ -461,12 +461,12 @@ QPushButton:pressed {
   <customwidget>
    <class>TableWidget</class>
    <extends>QTableWidget</extends>
-   <header location="global">widgets</header>
+   <header location="global">view</header>
   </customwidget>
   <customwidget>
    <class>MyGraphicsView</class>
    <extends>QGraphicsView</extends>
-   <header location="global">widgets</header>
+   <header location="global">view</header>
   </customwidget>
  </customwidgets>
  <resources/>

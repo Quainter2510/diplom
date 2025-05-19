@@ -1,12 +1,12 @@
+from PyQt5.QtGui import QIcon
 import sys
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QIcon
-from widgets import MainWindow
+from view import MainWindow
+from controller import AppController
 
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("Vega_radio.ico"))
-    widget = MainWindow()
-    widget.show()
-    sys.exit(app.exec_())
+app = QApplication(sys.argv)
+app.setWindowIcon(QIcon("Vega_radio.ico"))
+window = MainWindow()
+controller = AppController(window)
+window.show()
+sys.exit(app.exec_())

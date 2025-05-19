@@ -1,11 +1,12 @@
-import socket
-import struct
+import socket, struct, os
+from PyQt5.QtCore import pyqtSignal, QObject
 from enum import Enum
 from dataclasses import dataclass
 from pathlib import Path
+from datetime import datetime
+from PyQt5.QtCore import QThread, pyqtSignal
 from PIL import Image
 import numpy as np
-from datetime import datetime
 
 class ModeRLI(Enum):
     CHAR = '0'
@@ -31,8 +32,11 @@ class Params:
     dy: float
     dx: float
 
-class RLIClient:
+class RLIClient(QObject):
+    receive_data_percent = pyqtSignal(int, str)
+    
     def __init__(self, host='127.0.0.1', port=9977):
+        super().__init__()
         self.set_connect(host, port)
         self.mode = ModeRLI.CHAR
         
@@ -126,6 +130,7 @@ class RLIClient:
                     if progress_callback:
                         progress_callback(bytes_received, total_size)
                     
+                    self.receive_data_percent.emit(int(bytes_received/total_size * 100), 'Загрузка изображения')
                     print(f"Received {bytes_received}/{total_size} bytes ({bytes_received/total_size:.1%})")
             
             print(f"Successfully received {bytes_received} bytes and saved to {output_path}")
@@ -221,3 +226,77 @@ class RLIClient:
         except (struct.error, ValueError) as e:
             print(f"Error unpacking params: {e}")
             return None
+
+class ImageProcessingWorker(QThread):
+    progress_updated = pyqtSignal(int, str)
+    file_processed = pyqtSignal(str, int)
+    finished = pyqtSignal()
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, model, image_files, conf):
+        super().__init__()
+        self.model = model
+        self.image_files = image_files
+        self.conf = conf
+
+    def run(self):
+        try:
+            total_files = len(self.image_files)
+            for i, image_path in enumerate(self.image_files):                
+                filename = os.path.basename(image_path)
+                self.progress_updated.emit(int(100 * i / total_files), filename)
+
+                try:
+                    _, detections = self.model.process_image(image_path, self.conf)
+                    self.file_processed.emit(filename, detections)
+                except Exception as e:
+                    self.error_occurred.emit(f"Ошибка обработки {filename}: {str(e)}")
+
+            self.progress_updated.emit(100, "")
+            self.finished.emit()
+        except Exception as e:
+            self.error_occurred.emit(f"Критическая ошибка: {str(e)}")
+            self.finished.emit()
+
+class ImageFetchWorker(QThread):
+    finished = pyqtSignal(str) 
+    error = pyqtSignal(str)
+
+    def __init__(self, client: RLIClient, host, port, size_x, size_y):
+        super().__init__()
+        self.client = client
+        self.host = host
+        self.port = port
+        self.size_x = size_x
+        self.size_y = size_y
+
+    def run(self):
+        try:
+            self.client.set_connect(self.host, self.port)
+            if not self.client.connect():
+                self.error.emit("Не удалось подключиться к серверу")
+                return
+
+            if not self.client.send_mode(self.size_x, self.size_y):
+                self.error.emit("Ошибка отправки параметров")
+                return
+
+            result = self.client.receive_data()
+            if not result:
+                self.error.emit("Ошибка получения данных")
+                return
+
+            params, raw_file = result
+
+            tiff_file = Path(raw_file).with_suffix('.tiff')
+            file_name = self.client.raw_to_tiff(raw_file, str(tiff_file), params.size_x, params.mode_rli)
+            if not file_name:
+                self.error.emit("Ошибка конвертации")
+                return
+
+            self.finished.emit(file_name)
+
+        except Exception as e:
+            self.error.emit(f"Ошибка: {str(e)}")
+        finally:
+            self.client.disconnect()
