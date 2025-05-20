@@ -78,7 +78,6 @@ class TableWidget(QTableWidget):
     def add_row(self, file_name, value="Не определено"):
         row = self.rowCount()
         self.insertRow(row)
-        print(file_name)
         self.setItem(row, 0, QTableWidgetItem(file_name))
         self.setItem(row, 1, QTableWidgetItem(str(value)))
         self.item(row, 0).setFlags(Qt.ItemIsEnabled)

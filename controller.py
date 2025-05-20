@@ -13,7 +13,7 @@ class AppController:
         self.models = {
             "наземные объекты": TiledYOLOProcessor('weights/nano960-9.pt', tile_size=4000, imgsz=960, overlap=100),
             "большие надводные объекты": TiledYOLOProcessor('weights/medium_ships.pt', tile_size=800, imgsz=800, overlap=100),
-            "малые надводные объекты": TiledYOLOProcessor('weights/medium_ships.pt', tile_size=256, imgsz=256, overlap=50),
+            "малые надводные объекты": TiledYOLOProcessor('weights/bkr.pt', tile_size=256, imgsz=256, overlap=50),
         }
         self.model = self.models["наземные объекты"]
         self.conf = self.view.horizontalSlider.value() / 100
@@ -173,6 +173,10 @@ class AppController:
     def select_directory(self):
         directory = QFileDialog.getExistingDirectory(self.view, "Выберите директорию", "")
         if directory:
+            self.view.tableWidget.clearContents()
+            self.view.tableWidget.setRowCount(0)
+            self.view.detected_chbox.setChecked(False)
+            self.view.image_mode_detected = False
             self.image_files = self.view.get_images_in_directory(directory)
             self.view.tableWidget.fill_table([os.path.basename(f) for f in self.image_files])
             self.view.detected_chbox.setEnabled(False)

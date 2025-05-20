@@ -15,7 +15,7 @@ class TiledYOLOProcessor:
         os.makedirs(self.tmp_dir, exist_ok=True)
 
     def process_image(self, image_path, conf=0.25):
-        original_img = Image.open(image_path)
+        original_img = Image.open(image_path).convert('RGB')
         original_width, original_height = original_img.size
         filename = os.path.basename(image_path)
         
